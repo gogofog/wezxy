@@ -1,0 +1,58 @@
+name: Build exe
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install customtkinter pyinstaller
+
+      - name: Find script
+        shell: pwsh
+        run: |
+          $f = Get-ChildItem -Filter *.py -File | Where-Object { $_.Name -like "*weexxyy*" -or $_.Name -like "*wexxyy*" } | Select-Object -First 1
+          if (-not $f) { $f = Get-ChildItem -Filter *.py -File | Select-Object -First 1 }
+          if (-not $f) { throw "В корне репозитория нет .py файла" }
+          "SCRIPT=$($f.Name)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Generate icon
+        run: python $env:SCRIPT --make-icon
+
+      - name: Build exe
+        run: >
+          pyinstaller --noconfirm --clean --onefile --windowed --uac-admin
+          --name WexxyyTweaker --icon W.ico --add-data "W.ico;."
+          --collect-all customtkinter
+          --hidden-import socket --hidden-import statistics --hidden-import random
+          --hidden-import functools --hidden-import tkinter.messagebox
+          $env:SCRIPT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WexxyyTweaker
+          path: dist/WexxyyTweaker.exe
+
+      - name: Publish release (on tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/WexxyyTweaker.exe
+          generate_release_notes: true
